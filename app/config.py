@@ -118,6 +118,18 @@ class Config:
     def nba_base_url(self) -> str:
         return os.getenv('NBA_BASE_URL', 'http://www.basketball-reference.com')
     
+    @property
+    def ncaaf_base_url(self) -> str:
+        return os.getenv('NCAAF_BASE_URL', 'https://www.sports-reference.com/cfb')
+    
+    @property
+    def ncaab_base_url(self) -> str:
+        return os.getenv('NCAAB_BASE_URL', 'https://www.sports-reference.com/cbb')
+    
+    @property
+    def nhl_base_url(self) -> str:
+        return os.getenv('NHL_BASE_URL', 'https://www.hockey-reference.com')
+    
     def get_logging_config(self) -> Dict[str, Any]:
         """
         Get complete logging configuration.
@@ -207,6 +219,9 @@ class Config:
         print("\nSports URLs:")
         print(f"  NFL Base URL: {self.nfl_base_url}")
         print(f"  NBA Base URL: {self.nba_base_url}")
+        print(f"  NCAAF Base URL: {self.ncaaf_base_url}")
+        print(f"  NCAAB Base URL: {self.ncaab_base_url}")
+        print(f"  NHL Base URL: {self.nhl_base_url}")
         
         print("=" * 60)
 

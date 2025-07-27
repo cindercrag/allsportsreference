@@ -1,10 +1,10 @@
 # All Sports Reference
 
-A Python application for scraping and analyzing sports data from reference websites. Currently supports NFL and NBA data with teams, schedules, and statistics.
+A Python application for scraping and analyzing sports data from reference websites. Currently supports NFL, NBA, NCAAF, NCAAB (Men's & Women's), and NHL data with teams, schedules, and statistics.
 
 ## Features
 
-- 🏈 **Multi-Sport Support**: NFL and NBA data scraping
+- 🏈 **Multi-Sport Support**: NFL, NBA, NCAAF (College Football), NCAAB (Men's & Women's College Basketball), and NHL data scraping
 - 📊 **Data Export**: Automated CSV export with organized file structure
 - 📖 **Documentation**: Column glossaries for all exported data
 - 🗄️ **Database Integration**: PostgreSQL support with schema organization
@@ -67,6 +67,9 @@ allsportsreference/
 │   └── src/
 │       ├── nfl/             # NFL-specific constants and utilities
 │       ├── nba/             # NBA-specific constants and utilities
+│       ├── ncaaf/           # NCAAF (College Football) constants and utilities
+│       ├── ncaab/           # NCAAB (Men's & Women's College Basketball) constants and utilities
+│       ├── nhl/             # NHL-specific constants and utilities
 │       └── utils/           # Shared utilities
 │           ├── common.py    # CSV parsing and export functions
 │           └── database.py  # PostgreSQL integration
@@ -93,6 +96,27 @@ db.create_partitioned_table('nfl', 'schedule', columns)
 
 # Load CSV data
 db.load_csv_to_table('data/nfl/2024/schedule.csv', 'nfl', 'schedule', '2024')
+```
+
+### NCAAB Dual-League Support
+```python
+from app.src.ncaab import constants as ncaab
+
+# Men's basketball URLs
+mens_season = ncaab.get_url('season_page', league='men', year=2024)
+mens_stats = ncaab.get_url('basic_stats', league='men', year=2024)
+
+# Women's basketball URLs  
+womens_season = ncaab.get_url('season_page', league='women', year=2024)
+womens_stats = ncaab.get_url('basic_stats', league='women', year=2024)
+
+# Convenience functions
+mens_tournament = ncaab.get_mens_url('tournament', year=2024)
+womens_tournament = ncaab.get_womens_url('tournament', year=2024)
+
+# League-specific configuration
+mens_config = ncaab.get_league_config('men')
+womens_config = ncaab.get_league_config('women')
 ```
 
 ### Data Export
@@ -151,6 +175,28 @@ python app/config.py
 - Player information
 - Boxscores
 
+### NCAAF (College Football)
+- Team schedules and game logs
+- Conference standings
+- Rankings and polls
+- Player information
+- Boxscores
+
+### NCAAB (College Basketball - Men's & Women's)
+- Team schedules and game logs (both leagues)
+- Conference standings (men's and women's divisions)
+- Rankings and polls
+- Player information
+- Boxscores
+- Tournament brackets (NCAA men's and women's tournaments)
+- League-specific URL generation with `league='men'` or `league='women'` parameter
+
+### NHL (National Hockey League)
+- Team schedules and game logs
+- Season statistics
+- Player information
+- Boxscores
+
 ## File Organization
 
 Data is automatically organized in a hierarchical structure:
@@ -166,12 +212,33 @@ data/
 │       └── weeks/
 │           ├── week_1_boxscores.csv
 │           └── ...
-└── nba/
+├── nba/
+│   └── 2024/
+│       └── teams/
+│           ├── LAL/
+│           │   ├── LAL_2024_schedule.csv
+│           │   └── LAL_2024_roster.csv
+│           └── ...
+├── ncaaf/
+│   └── 2024/
+│       └── teams/
+│           ├── alabama/
+│           │   ├── alabama_2024_schedule.csv
+│           │   └── alabama_2024_roster.csv
+│           └── ...
+├── ncaab/
+│   └── 2024/
+│       └── teams/
+│           ├── duke/
+│           │   ├── duke_2024_schedule.csv
+│           │   └── duke_2024_roster.csv
+│           └── ...
+└── nhl/
     └── 2024/
         └── teams/
-            ├── LAL/
-            │   ├── LAL_2024_schedule.csv
-            │   └── LAL_2024_roster.csv
+            ├── BOS/
+            │   ├── BOS_2024_schedule.csv
+            │   └── BOS_2024_roster.csv
             └── ...
 ```
 

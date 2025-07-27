@@ -19,6 +19,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 from config import config
 from src.nfl import constants as nfl_constants
 from src.nba import constants as nba_constants
+from src.ncaaf import constants as ncaaf_constants
+from src.ncaab import constants as ncaab_constants
+from src.nhl import constants as nhl_constants
 from src.utils.common import _todays_date
 
 
@@ -86,11 +89,20 @@ def main():
     
     # Display supported sports
     print("Supported Sports:")
-    print(f"- {nfl_constants.SPORT_CONFIG['display_name']} ({nfl_constants.SPORT_CONFIG['name'].upper()})")
-    print(f"- {nba_constants.SPORT_CONFIG['display_name']} ({nba_constants.SPORT_CONFIG['name'].upper()})")
+    sports_configs = {
+        'NFL': nfl_constants.NFL_CONFIG,
+        'NBA': nba_constants.NBA_CONFIG,
+        'NCAAF': ncaaf_constants.NCAAF_CONFIG,
+        'NCAAB (Men)': {**ncaab_constants.NCAAB_CONFIG, 'display_name': 'NCAA Men\'s Basketball'},
+        'NCAAB (Women)': {**ncaab_constants.NCAAB_CONFIG, 'display_name': 'NCAA Women\'s Basketball'},
+        'NHL': nhl_constants.NHL_CONFIG
+    }
+    
+    for sport_name, sport_config in sports_configs.items():
+        print(f"- {sport_config['display_name']} ({sport_name})")
     print()
     
-    logger.info(f"Loaded {len([nfl_constants, nba_constants])} sport configurations")
+    logger.info(f"Loaded {len(sports_configs)} sport configurations")
     
     # Display available functionality
     print("Available features:")
@@ -119,6 +131,21 @@ def main():
     print("NBA:")
     print(f"  - Season page: {nba_constants.get_url('season_page', year=2024)}")
     print(f"  - Lakers schedule: {nba_constants.get_url('schedule', team='LAL', year=2024)}")
+    print("NCAAF:")
+    print(f"  - Season page: {ncaaf_constants.get_url('season_page', year=2024)}")
+    print(f"  - Alabama schedule: {ncaaf_constants.get_url('schedule', team='alabama', year=2024)}")
+    print("NCAAB (Men's):")
+    print(f"  - Season page: {ncaab_constants.get_url('season_page', league='men', year=2024)}")
+    print(f"  - Duke schedule: {ncaab_constants.get_url('schedule', team='duke', year=2024)}")
+    print(f"  - Basic stats: {ncaab_constants.get_url('basic_stats', league='men', year=2024)}")
+    print("NCAAB (Women's):")
+    print(f"  - Season page: {ncaab_constants.get_url('season_page', league='women', year=2024)}")
+    print(f"  - UConn schedule: {ncaab_constants.get_url('schedule', team='connecticut', year=2024)}")
+    print(f"  - Basic stats: {ncaab_constants.get_url('basic_stats', league='women', year=2024)}")
+    print("NHL:")
+    print(f"  - Season page: {nhl_constants.get_url('season_page', year=2024)}")
+    print(f"  - Bruins schedule: {nhl_constants.get_url('schedule', team='BOS', year=2024)}")
+    print()
     print()
     
     logger.success("Application initialization completed successfully")

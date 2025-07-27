@@ -48,3 +48,10 @@ def get_url(endpoint, **kwargs):
         raise ValueError(f"Unknown endpoint: {endpoint}. Available: {list(URLS.keys())}")
     
     return URLS[endpoint].format(**kwargs)
+
+
+# Complete configuration dictionary for modern usage
+NBA_CONFIG = {
+    **SPORT_CONFIG,
+    'urls': URLS
+}
