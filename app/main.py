@@ -23,6 +23,7 @@ from src.ncaaf import constants as ncaaf_constants
 from src.ncaab import constants as ncaab_constants
 from src.nhl import constants as nhl_constants
 from src.utils.common import _todays_date
+from src.nfl.teams import Teams
 
 
 def setup_logging():
@@ -160,6 +161,39 @@ def main():
         print("\n🐛 Debug mode is enabled")
         config.print_config(hide_sensitive=True)
 
+    # Example of using Teams class to get NFL teams
+    try:
+        teams = Teams(2024)
+        print("\n🏈 NFL Teams for 2024:")
+        print(f"{teams}")
+        
+        # Demonstrate individual team access by abbreviation
+        print("📊 Individual Team Access Examples:")
+        print("=" * 50)
+        
+        # Access specific teams by abbreviation
+        eagles = teams.PHI
+        bills = teams.BUF
+        lions = teams.DET
+        chiefs = teams.KAN
+        
+        print(f"🦅 {eagles['Tm']} ({eagles['Abbrev']}): {eagles['W']}-{eagles['L']} record, {eagles['PF']} PF, {eagles['PA']} PA")
+        print(f"🦬 {bills['Tm']} ({bills['Abbrev']}): {bills['W']}-{bills['L']} record, {bills['PF']} PF, {bills['PA']} PA")
+        print(f"🦁 {lions['Tm']} ({lions['Abbrev']}): {lions['W']}-{lions['L']} record, {lions['PF']} PF, {lions['PA']} PA")
+        print(f"👑 {chiefs['Tm']} ({chiefs['Abbrev']}): {chiefs['W']}-{chiefs['L']} record, {chiefs['PF']} PF, {chiefs['PA']} PA")
+        
+        print()
+        print("🏆 Conference Breakdown:")
+        afc_teams = teams.get_teams_by_conference('AFC')
+        nfc_teams = teams.get_teams_by_conference('NFC')
+        print(f"AFC: {len(afc_teams)} teams | NFC: {len(nfc_teams)} teams")
+        print(f"Available abbreviations: {', '.join(sorted(teams.list_abbreviations()))}")
+
+    except Exception as e:
+        logger.error(f"Failed to load NFL teams: {e}")
+        print(f"An error occurred while loading NFL teams: {e}")
+        sys.exit(1)
+
 
 if __name__ == "__main__":
     try:
@@ -174,12 +208,6 @@ if __name__ == "__main__":
         # Run main application
         main()
         
-        logger.info("Application finished successfully")
-    except KeyboardInterrupt:
-        logger.info("Application interrupted by user")
-    except Exception as e:
-        logger.exception(f"Unhandled exception: {e}")
-        sys.exit(1)
         logger.info("Application finished successfully")
     except KeyboardInterrupt:
         logger.warning("Application interrupted by user")
