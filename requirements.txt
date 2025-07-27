@@ -1,0 +1,6 @@
+requests
+lxml
+pyquery
+pycurl
+pandas
+beautifulsoup4
