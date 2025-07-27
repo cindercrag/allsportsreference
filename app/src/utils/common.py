@@ -9,6 +9,12 @@ import gzip
 import zlib
 import pandas as pd
 from bs4 import BeautifulSoup
+import sys
+from pathlib import Path
+
+# Import configuration
+sys.path.append(str(Path(__file__).parent.parent.parent))
+from config import config
 
 
 def _todays_date():
@@ -269,42 +275,39 @@ def _curl_page(url=None, local_file=None):
 
 
 def generate_export_filename(sport, data_type, season=None, team=None, week=None, 
-                           file_format="csv", base_dir="data"):
+                           file_format="csv", base_dir=None):
     """
     Generate a standardized filename for exported sports data.
+    Uses configuration-based data directory if base_dir is not provided.
     
     Parameters
     ----------
     sport : str
         The sport (e.g., 'nfl', 'nba', 'mlb')
     data_type : str
-        Type of data (e.g., 'schedule', 'roster', 'boxscore', 'season_stats')
-    season : str or int, optional
-        The season year (e.g., 2024)
+        The type of data (e.g., 'schedule', 'roster', 'boxscore')
+    season : str, optional
+        The season/year (e.g., '2024')
     team : str, optional
-        Team abbreviation (e.g., 'NE', 'DAL')
+        The team abbreviation (e.g., 'NE', 'LAL')
     week : str or int, optional
-        Week number for weekly data
-    file_format : str, optional
-        File extension (default: 'csv')
+        The week number for weekly data
+    file_format : str
+        The file format extension (default: 'csv')
     base_dir : str, optional
-        Base directory for exports (default: 'data')
-    
+        Base directory for exports (uses config.data_dir if None)
+        
     Returns
     -------
     str
-        Formatted filename with path
-    
-    Examples
-    --------
-    generate_export_filename('nfl', 'schedule', 2024, 'NE')
-    # Returns: 'data/nfl/2024/teams/NE/NE_2024_schedule.csv'
-    
-    generate_export_filename('nfl', 'boxscores', 2024, week=1)
-    # Returns: 'data/nfl/2024/weeks/week_1_boxscores.csv'
+        Full path to the export file
     """
     import os
     from datetime import datetime
+    
+    # Use config data directory if base_dir not provided
+    if base_dir is None:
+        base_dir = str(config.data_dir)
     
     # Create base path components
     path_parts = [base_dir, sport.lower()]
@@ -346,9 +349,10 @@ def generate_export_filename(sport, data_type, season=None, team=None, week=None
 
 def export_dataframe_to_csv(df, filename=None, sport=None, data_type=None, 
                            season=None, team=None, week=None, include_index=False, 
-                           create_dirs=True):
+                           create_dirs=True, base_dir=None):
     """
     Export a pandas DataFrame to a CSV file with automatic filename generation.
+    Uses configuration-based data directory if base_dir is not provided.
     
     Parameters
     ----------
@@ -370,6 +374,8 @@ def export_dataframe_to_csv(df, filename=None, sport=None, data_type=None,
         Whether to include the DataFrame index in the CSV (default: False)
     create_dirs : bool, optional
         Whether to create directories if they don't exist (default: True)
+    base_dir : str, optional
+        Base directory for exports (uses config.data_dir if None)
     
     Returns
     -------
@@ -395,7 +401,7 @@ def export_dataframe_to_csv(df, filename=None, sport=None, data_type=None,
     if filename is None:
         if not all([sport, data_type]):
             raise ValueError("Must provide either 'filename' or both 'sport' and 'data_type'")
-        filename = generate_export_filename(sport, data_type, season, team, week)
+        filename = generate_export_filename(sport, data_type, season, team, week, base_dir=base_dir)
     
     # Create directories if needed
     if create_dirs:
@@ -408,7 +414,7 @@ def export_dataframe_to_csv(df, filename=None, sport=None, data_type=None,
     return filename
 
 
-def export_multiple_dataframes(dataframes_dict, sport, season, team=None, base_dir="data"):
+def export_multiple_dataframes(dataframes_dict, sport, season, team=None, base_dir=None):
     """
     Export multiple DataFrames with consistent naming and organization.
     
@@ -510,7 +516,7 @@ def create_export_summary(exported_files, sport, season, team=None):
 
 
 def save_glossary(glossary, headers, sport="NFL", season=None, team=None, 
-                 filename=None, data_type="glossary"):
+                 filename=None, data_type="glossary", base_dir=None):
     """
     Save column glossary to a markdown file using the same organization as CSV exports.
     
@@ -541,7 +547,7 @@ def save_glossary(glossary, headers, sport="NFL", season=None, team=None,
     # Generate filename using the same system as CSV exports
     if filename is None:
         filename = generate_export_filename(
-            sport.lower(), data_type, season, team, file_format='md'
+            sport.lower(), data_type, season, team, file_format='md', base_dir=base_dir
         )
     
     # Create directory if needed

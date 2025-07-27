@@ -4,3 +4,7 @@ pyquery
 pycurl
 pandas
 beautifulsoup4
+psycopg2-binary
+sqlalchemy
+loguru
+python-dotenv
