@@ -24,6 +24,7 @@ from src.ncaab import constants as ncaab_constants
 from src.nhl import constants as nhl_constants
 from src.utils.common import _todays_date
 from src.nfl.teams import Teams
+from src.nfl.schedule import Schedule
 
 
 def setup_logging():
@@ -212,6 +213,74 @@ def main():
         except Exception as export_error:
             logger.warning(f"CSV export demonstration failed: {export_error}")
             print(f"⚠️  CSV export demo failed: {export_error}")
+
+        # Demonstrate Schedule functionality using teams data
+        print()
+        print("📅 Schedule Export Examples:")
+        print("=" * 30)
+        
+        try:
+            # Get schedule for the teams we already have loaded
+            sample_teams = ['PHI', 'BUF', 'DET']  # Eagles, Bills, Lions
+            
+            for team_abbrev in sample_teams:
+                if team_abbrev in teams.list_abbreviations():
+                    # Get team info from teams data
+                    team_data = getattr(teams, team_abbrev)
+                    team_name = team_data.get('Team', team_data.get('Tm', 'Unknown'))
+                    
+                    print(f"\n🏈 Getting schedule for {team_name} ({team_abbrev})...")
+                    
+                    # Create schedule instance
+                    schedule = Schedule(team_abbrev, '2024')
+                    
+                    if len(schedule) > 0:
+                        # Get regular season games only
+                        regular_season = schedule.get_regular_season_games()
+                        wins = schedule.get_wins()
+                        losses = schedule.get_losses()
+                        
+                        print(f"   📊 Total games: {len(schedule)} | Regular season: {len(regular_season)}")
+                        print(f"   🏆 Record: {len(wins)}-{len(losses)}")
+                        
+                        # Export regular season to CSV
+                        # Create a DataFrame with just regular season games
+                        import pandas as pd
+                        from pathlib import Path
+                        regular_season_df = pd.DataFrame(regular_season)
+                        
+                        if not regular_season_df.empty:
+                            # Create proper directory structure: data/nfl/2024/teams/PHI/
+                            base_dir = Path("data")
+                            team_dir = base_dir / "nfl" / "2024" / "teams" / team_abbrev.upper()
+                            team_dir.mkdir(parents=True, exist_ok=True)
+                            
+                            # Generate filename for regular season data
+                            filename = team_dir / f"2024_{team_abbrev.lower()}_regular_season.csv"
+                            regular_season_df.to_csv(filename, index=False)
+                            print(f"   ✅ Regular season exported to: {filename}")
+                            print(f"   📈 Regular season data: {len(regular_season_df)} games, {len(regular_season_df.columns)} columns")
+                        
+                        # Also export full schedule (regular + playoffs)
+                        full_schedule_csv = schedule.to_csv()
+                        print(f"   ✅ Full schedule exported to: {full_schedule_csv}")
+                        
+                        # Show sample game data
+                        if regular_season:
+                            first_game = regular_season[0]
+                            week = first_game.get('Week', 'N/A')
+                            date = first_game.get('Date', 'N/A')
+                            opponent = first_game.get('Opponent', 'N/A')
+                            result = first_game.get('Result', 'N/A')
+                            score = f"{first_game.get('Team_Score', 'N/A')}-{first_game.get('Opp_Score', 'N/A')}"
+                            location = 'vs' if first_game.get('Location', '') != '@' else '@'
+                            print(f"   🎮 First game: Week {week} ({date}) {location} {opponent} ({result} {score})")
+                    else:
+                        print(f"   ❌ No schedule data found for {team_abbrev}")
+                        
+        except Exception as schedule_error:
+            logger.warning(f"Schedule demonstration failed: {schedule_error}")
+            print(f"⚠️  Schedule demo failed: {schedule_error}")
 
     except Exception as e:
         logger.error(f"Failed to load NFL teams: {e}")
