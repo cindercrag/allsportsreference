@@ -4,10 +4,16 @@ All Sports Reference - Main Application Entry Point
 
 A Python application for scraping and analyzing sports data from reference websites.
 Currently supports NFL and NBA data with teams, schedules, and statistics.
+
+Usage:
+    python main.py                    # Process 2024 season (default)
+    python main.py 2023               # Process 2023 season
+    python main.py 2022 2023 2024     # Process multiple seasons
 """
 
 import sys
 import os
+import argparse
 from pathlib import Path
 from datetime import datetime
 from loguru import logger
@@ -75,19 +81,118 @@ def setup_logging():
     logger.info("Logging configured successfully")
 
 
-def main():
+def parse_arguments():
+    """
+    Parse command line arguments for seasons to process.
+    
+    Returns
+    -------
+    list
+        List of seasons to process
+    """
+    parser = argparse.ArgumentParser(
+        description='All Sports Reference - Sports data scraper and analyzer',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python main.py                    # Process 2024 season (default)
+  python main.py 2023               # Process 2023 season only
+  python main.py 2022 2023 2024     # Process multiple seasons
+  python main.py --seasons 2020 2021 2022 2023 2024  # Process individual seasons
+  python main.py --seasons 2000-2005                  # Process range of seasons (2000 to 2005)
+  python main.py --seasons 2020-2022 2024            # Process range and individual seasons
+        """
+    )
+    
+    parser.add_argument(
+        'seasons',
+        nargs='*',
+        type=int,
+        default=None,
+        help='Seasons to process (default: 2024)'
+    )
+    
+    parser.add_argument(
+        '--seasons',
+        type=str,
+        nargs='+',
+        dest='seasons_flag',
+        help='Seasons to process. Can be individual years (2023 2024) or ranges (2000-2005)'
+    )
+    
+    args = parser.parse_args()
+    
+    # Determine which seasons to process
+    if args.seasons_flag:
+        seasons = []
+        for item in args.seasons_flag:
+            if '-' in item and item.count('-') == 1:
+                # Handle range format like "2000-2005"
+                try:
+                    start_year, end_year = item.split('-')
+                    start_year = int(start_year)
+                    end_year = int(end_year)
+                    
+                    if start_year > end_year:
+                        print(f"Warning: Invalid range {item} (start year {start_year} > end year {end_year})")
+                        continue
+                    
+                    # Add all years in the range (inclusive)
+                    seasons.extend(range(start_year, end_year + 1))
+                except ValueError:
+                    print(f"Warning: Invalid range format '{item}'. Use format like '2000-2005'")
+                    continue
+            else:
+                # Handle individual year
+                try:
+                    seasons.append(int(item))
+                except ValueError:
+                    print(f"Warning: Invalid year '{item}'. Must be a number or range like '2000-2005'")
+                    continue
+    elif args.seasons:
+        seasons = args.seasons
+    else:
+        seasons = [2024]  # Default to current season
+    
+    # Validate seasons
+    current_year = datetime.now().year
+    valid_seasons = []
+    for season in seasons:
+        if 1990 <= season <= current_year + 1:  # Reasonable range
+            valid_seasons.append(season)
+        else:
+            print(f"Warning: Skipping invalid season {season} (must be between 1990 and {current_year + 1})")
+    
+    if not valid_seasons:
+        print("Error: No valid seasons specified. Using default 2024.")
+        valid_seasons = [2024]
+    
+    return sorted(valid_seasons)
+
+
+def main(seasons=None):
     """
     Main entry point for the All Sports Reference application.
+    
+    Parameters
+    ----------
+    seasons : list, optional
+        List of seasons to process. If None, defaults to [2024]
     """
+    if seasons is None:
+        seasons = [2024]
+    
     logger.info(f"Starting {config.app_name}")
     
     print("=" * 60)
     print(f"Welcome to {config.app_name}")
     print("=" * 60)
     print(f"Current date: {_todays_date()}")
+    print(f"Processing seasons: {', '.join(map(str, seasons))}")
     print()
     
     logger.debug(f"Application started at {datetime.now()}")
+    logger.info(f"Processing {len(seasons)} season(s): {seasons}")
     
     # Display supported sports
     print("Supported Sports:")
@@ -162,129 +267,134 @@ def main():
         print("\n🐛 Debug mode is enabled")
         config.print_config(hide_sensitive=True)
 
-    # Example of using Teams class to get NFL teams
+    # Example of using Teams class to get NFL teams for multiple seasons
     try:
-        teams = Teams(2024)
-        print("\n🏈 NFL Teams for 2024:")
-        print(f"{teams}")
-        
-        # Demonstrate individual team access by abbreviation
-        print("📊 Individual Team Access Examples:")
-        print("=" * 50)
-        
-        # Access specific teams by abbreviation
-        eagles = teams.PHI
-        bills = teams.BUF
-        lions = teams.DET
-        chiefs = teams.KAN
-        
-        print(f"🦅 {eagles.get('Team', eagles.get('Tm', 'Unknown'))} ({eagles['Abbrev']}): {eagles.get('Wins', eagles.get('W', 'N/A'))}-{eagles.get('Losses', eagles.get('L', 'N/A'))} record, {eagles.get('Points For', eagles.get('PF', 'N/A'))} PF, {eagles.get('Points Allowed', eagles.get('PA', 'N/A'))} PA")
-        print(f"🦬 {bills.get('Team', bills.get('Tm', 'Unknown'))} ({bills['Abbrev']}): {bills.get('Wins', bills.get('W', 'N/A'))}-{bills.get('Losses', bills.get('L', 'N/A'))} record, {bills.get('Points For', bills.get('PF', 'N/A'))} PF, {bills.get('Points Allowed', bills.get('PA', 'N/A'))} PA")
-        print(f"🦁 {lions.get('Team', lions.get('Tm', 'Unknown'))} ({lions['Abbrev']}): {lions.get('Wins', lions.get('W', 'N/A'))}-{lions.get('Losses', lions.get('L', 'N/A'))} record, {lions.get('Points For', lions.get('PF', 'N/A'))} PF, {lions.get('Points Allowed', lions.get('PA', 'N/A'))} PA")
-        print(f"👑 {chiefs.get('Team', chiefs.get('Tm', 'Unknown'))} ({chiefs['Abbrev']}): {chiefs.get('Wins', chiefs.get('W', 'N/A'))}-{chiefs.get('Losses', chiefs.get('L', 'N/A'))} record, {chiefs.get('Points For', chiefs.get('PF', 'N/A'))} PF, {chiefs.get('Points Allowed', chiefs.get('PA', 'N/A'))} PA")
-        
-        print()
-        print("🏆 Conference Breakdown:")
-        afc_teams = teams.get_teams_by_conference('AFC')
-        nfc_teams = teams.get_teams_by_conference('NFC')
-        print(f"AFC: {len(afc_teams)} teams | NFC: {len(nfc_teams)} teams")
-        print(f"Available abbreviations: {', '.join(sorted(teams.list_abbreviations()))}")
-        
-        # Demonstrate CSV export functionality
-        print()
-        print("💾 CSV Export Examples:")
-        print("=" * 30)
-        
-        try:
-            # Export all teams
-            csv_file = teams.to_csv()
-            print(f"✅ All teams exported to: {csv_file}")
+        for season in seasons:
+            print(f"\n{'='*60}")
+            print(f"🏈 Processing NFL Season {season}")
+            print(f"{'='*60}")
             
-            # Export by conference
-            conf_files = teams.export_by_conference()
-            for conf, filename in conf_files.items():
-                print(f"✅ {conf} teams exported to: {filename}")
+            teams = Teams(season)
+            print(f"\n🏈 NFL Teams for {season}:")
+            print(f"{teams}")
+            
+            # Demonstrate individual team access by abbreviation
+            print("📊 Individual Team Access Examples:")
+            print("=" * 50)
+            
+            # Access specific teams by abbreviation
+            eagles = teams.PHI
+            bills = teams.BUF
+            lions = teams.DET
+            chiefs = teams.KAN
+            
+            print(f"🦅 {eagles.get('Team', eagles.get('Tm', 'Unknown'))} ({eagles['Abbrev']}): {eagles.get('Wins', eagles.get('W', 'N/A'))}-{eagles.get('Losses', eagles.get('L', 'N/A'))} record, {eagles.get('Points For', eagles.get('PF', 'N/A'))} PF, {eagles.get('Points Allowed', eagles.get('PA', 'N/A'))} PA")
+            print(f"🦬 {bills.get('Team', bills.get('Tm', 'Unknown'))} ({bills['Abbrev']}): {bills.get('Wins', bills.get('W', 'N/A'))}-{bills.get('Losses', bills.get('L', 'N/A'))} record, {bills.get('Points For', bills.get('PF', 'N/A'))} PF, {bills.get('Points Allowed', bills.get('PA', 'N/A'))} PA")
+            print(f"🦁 {lions.get('Team', lions.get('Tm', 'Unknown'))} ({lions['Abbrev']}): {lions.get('Wins', lions.get('W', 'N/A'))}-{lions.get('Losses', lions.get('L', 'N/A'))} record, {lions.get('Points For', lions.get('PF', 'N/A'))} PF, {lions.get('Points Allowed', lions.get('PA', 'N/A'))} PA")
+            print(f"👑 {chiefs.get('Team', chiefs.get('Tm', 'Unknown'))} ({chiefs['Abbrev']}): {chiefs.get('Wins', chiefs.get('W', 'N/A'))}-{chiefs.get('Losses', chiefs.get('L', 'N/A'))} record, {chiefs.get('Points For', chiefs.get('PF', 'N/A'))} PF, {chiefs.get('Points Allowed', chiefs.get('PA', 'N/A'))} PA")
+            
+            print()
+            print("🏆 Conference Breakdown:")
+            afc_teams = teams.get_teams_by_conference('AFC')
+            nfc_teams = teams.get_teams_by_conference('NFC')
+            print(f"AFC: {len(afc_teams)} teams | NFC: {len(nfc_teams)} teams")
+            print(f"Available abbreviations: {', '.join(sorted(teams.list_abbreviations()))}")
+            
+            # Demonstrate CSV export functionality
+            print()
+            print(f"💾 CSV Export Examples for {season}:")
+            print("=" * 40)
+            
+            try:
+                # Export all teams
+                csv_file = teams.to_csv()
+                print(f"✅ All teams exported to: {csv_file}")
                 
-            # Show data structure
-            df = teams.to_dataframe()
-            print(f"📊 Data structure: {df.shape[0]} teams, {df.shape[1]} columns")
-            print(f"   Columns: {', '.join(df.columns)}")
-            
-        except Exception as export_error:
-            logger.warning(f"CSV export demonstration failed: {export_error}")
-            print(f"⚠️  CSV export demo failed: {export_error}")
+                # Export by conference
+                conf_files = teams.export_by_conference()
+                for conf, filename in conf_files.items():
+                    print(f"✅ {conf} teams exported to: {filename}")
+                    
+                # Show data structure
+                df = teams.to_dataframe()
+                print(f"📊 Data structure: {df.shape[0]} teams, {df.shape[1]} columns")
+                print(f"   Columns: {', '.join(df.columns)}")
+                
+            except Exception as export_error:
+                logger.warning(f"CSV export demonstration failed for {season}: {export_error}")
+                print(f"⚠️  CSV export demo failed for {season}: {export_error}")
 
-        # Demonstrate Schedule functionality using teams data
-        print()
-        print("📅 Schedule Export Examples:")
-        print("=" * 30)
-        
-        try:
-            # Get schedule for the teams we already have loaded
-            sample_teams = ['PHI', 'BUF', 'DET']  # Eagles, Bills, Lions
+            # Demonstrate Schedule functionality using teams data
+            print()
+            print(f"📅 Schedule Export Examples for {season}:")
+            print("=" * 40)
             
-            for team_abbrev in sample_teams:
-                if team_abbrev in teams.list_abbreviations():
-                    # Get team info from teams data
-                    team_data = getattr(teams, team_abbrev)
-                    team_name = team_data.get('Team', team_data.get('Tm', 'Unknown'))
-                    
-                    print(f"\n🏈 Getting schedule for {team_name} ({team_abbrev})...")
-                    
-                    # Create schedule instance
-                    schedule = Schedule(team_abbrev, '2024')
-                    
-                    if len(schedule) > 0:
-                        # Get regular season games only
-                        regular_season = schedule.get_regular_season_games()
-                        wins = schedule.get_wins()
-                        losses = schedule.get_losses()
+            try:
+                # Get schedule for the teams we already have loaded
+                sample_teams = ['PHI', 'BUF', 'DET']  # Eagles, Bills, Lions
+                
+                for team_abbrev in sample_teams:
+                    if team_abbrev in teams.list_abbreviations():
+                        # Get team info from teams data
+                        team_data = getattr(teams, team_abbrev)
+                        team_name = team_data.get('Team', team_data.get('Tm', 'Unknown'))
                         
-                        print(f"   📊 Total games: {len(schedule)} | Regular season: {len(regular_season)}")
-                        print(f"   🏆 Record: {len(wins)}-{len(losses)}")
+                        print(f"\n🏈 Getting schedule for {team_name} ({team_abbrev}) - {season}...")
                         
-                        # Export regular season to CSV
-                        # Create a DataFrame with just regular season games
-                        import pandas as pd
-                        from pathlib import Path
-                        regular_season_df = pd.DataFrame(regular_season)
+                        # Create schedule instance
+                        schedule = Schedule(team_abbrev, str(season))
                         
-                        if not regular_season_df.empty:
-                            # Create proper directory structure: data/nfl/2024/teams/PHI/
-                            base_dir = Path("data")
-                            team_dir = base_dir / "nfl" / "2024" / "teams" / team_abbrev.upper()
-                            team_dir.mkdir(parents=True, exist_ok=True)
+                        if len(schedule) > 0:
+                            # Get regular season games only
+                            regular_season = schedule.get_regular_season_games()
+                            wins = schedule.get_wins()
+                            losses = schedule.get_losses()
                             
-                            # Generate filename for regular season data
-                            filename = team_dir / f"2024_{team_abbrev.lower()}_regular_season.csv"
-                            regular_season_df.to_csv(filename, index=False)
-                            print(f"   ✅ Regular season exported to: {filename}")
-                            print(f"   📈 Regular season data: {len(regular_season_df)} games, {len(regular_season_df.columns)} columns")
-                        
-                        # Also export full schedule (regular + playoffs)
-                        full_schedule_csv = schedule.to_csv()
-                        print(f"   ✅ Full schedule exported to: {full_schedule_csv}")
-                        
-                        # Show sample game data
-                        if regular_season:
-                            first_game = regular_season[0]
-                            week = first_game.get('Week', 'N/A')
-                            date = first_game.get('Date', 'N/A')
-                            opponent = first_game.get('Opponent', 'N/A')
-                            result = first_game.get('Result', 'N/A')
-                            score = f"{first_game.get('Team_Score', 'N/A')}-{first_game.get('Opp_Score', 'N/A')}"
-                            location = 'vs' if first_game.get('Location', '') != '@' else '@'
-                            print(f"   🎮 First game: Week {week} ({date}) {location} {opponent} ({result} {score})")
-                    else:
-                        print(f"   ❌ No schedule data found for {team_abbrev}")
-                        
-        except Exception as schedule_error:
-            logger.warning(f"Schedule demonstration failed: {schedule_error}")
-            print(f"⚠️  Schedule demo failed: {schedule_error}")
+                            print(f"   📊 Total games: {len(schedule)} | Regular season: {len(regular_season)}")
+                            print(f"   🏆 Record: {len(wins)}-{len(losses)}")
+                            
+                            # Export regular season to CSV
+                            # Create a DataFrame with just regular season games
+                            import pandas as pd
+                            from pathlib import Path
+                            regular_season_df = pd.DataFrame(regular_season)
+                            
+                            if not regular_season_df.empty:
+                                # Create proper directory structure: data/nfl/2024/teams/PHI/
+                                base_dir = Path("data")
+                                team_dir = base_dir / "nfl" / str(season) / "teams" / team_abbrev.upper()
+                                team_dir.mkdir(parents=True, exist_ok=True)
+                                
+                                # Generate filename for regular season data
+                                filename = team_dir / f"{season}_{team_abbrev.lower()}_regular_season.csv"
+                                regular_season_df.to_csv(filename, index=False)
+                                print(f"   ✅ Regular season exported to: {filename}")
+                                print(f"   📈 Regular season data: {len(regular_season_df)} games, {len(regular_season_df.columns)} columns")
+                            
+                            # Also export full schedule (regular + playoffs)
+                            full_schedule_csv = schedule.to_csv()
+                            print(f"   ✅ Full schedule exported to: {full_schedule_csv}")
+                            
+                            # Show sample game data
+                            if regular_season:
+                                first_game = regular_season[0]
+                                week = first_game.get('Week', 'N/A')
+                                date = first_game.get('Date', 'N/A')
+                                opponent = first_game.get('Opponent', 'N/A')
+                                result = first_game.get('Result', 'N/A')
+                                score = f"{first_game.get('Team_Score', 'N/A')}-{first_game.get('Opp_Score', 'N/A')}"
+                                location = 'vs' if first_game.get('Location', '') != '@' else '@'
+                                print(f"   🎮 First game: Week {week} ({date}) {location} {opponent} ({result} {score})")
+                        else:
+                            print(f"   ❌ No schedule data found for {team_abbrev} in {season}")
+                            
+            except Exception as schedule_error:
+                logger.warning(f"Schedule demonstration failed for {season}: {schedule_error}")
+                print(f"⚠️  Schedule demo failed for {season}: {schedule_error}")
 
     except Exception as e:
-        logger.error(f"Failed to load NFL teams: {e}")
-        print(f"An error occurred while loading NFL teams: {e}")
+        logger.error(f"Failed to process NFL data: {e}")
+        print(f"An error occurred while processing NFL data: {e}")
         sys.exit(1)
 
 
@@ -298,8 +408,12 @@ if __name__ == "__main__":
         # Setup logging using configuration
         setup_logging()
         
+        # Parse command line arguments
+        seasons = parse_arguments()
+        logger.info(f"Processing seasons: {seasons}")
+        
         # Run main application
-        main()
+        main(seasons=seasons)
         
         logger.info("Application finished successfully")
     except KeyboardInterrupt:
