@@ -177,10 +177,10 @@ def main():
         lions = teams.DET
         chiefs = teams.KAN
         
-        print(f"🦅 {eagles['Tm']} ({eagles['Abbrev']}): {eagles['W']}-{eagles['L']} record, {eagles['PF']} PF, {eagles['PA']} PA")
-        print(f"🦬 {bills['Tm']} ({bills['Abbrev']}): {bills['W']}-{bills['L']} record, {bills['PF']} PF, {bills['PA']} PA")
-        print(f"🦁 {lions['Tm']} ({lions['Abbrev']}): {lions['W']}-{lions['L']} record, {lions['PF']} PF, {lions['PA']} PA")
-        print(f"👑 {chiefs['Tm']} ({chiefs['Abbrev']}): {chiefs['W']}-{chiefs['L']} record, {chiefs['PF']} PF, {chiefs['PA']} PA")
+        print(f"🦅 {eagles.get('Team', eagles.get('Tm', 'Unknown'))} ({eagles['Abbrev']}): {eagles.get('Wins', eagles.get('W', 'N/A'))}-{eagles.get('Losses', eagles.get('L', 'N/A'))} record, {eagles.get('Points For', eagles.get('PF', 'N/A'))} PF, {eagles.get('Points Allowed', eagles.get('PA', 'N/A'))} PA")
+        print(f"🦬 {bills.get('Team', bills.get('Tm', 'Unknown'))} ({bills['Abbrev']}): {bills.get('Wins', bills.get('W', 'N/A'))}-{bills.get('Losses', bills.get('L', 'N/A'))} record, {bills.get('Points For', bills.get('PF', 'N/A'))} PF, {bills.get('Points Allowed', bills.get('PA', 'N/A'))} PA")
+        print(f"🦁 {lions.get('Team', lions.get('Tm', 'Unknown'))} ({lions['Abbrev']}): {lions.get('Wins', lions.get('W', 'N/A'))}-{lions.get('Losses', lions.get('L', 'N/A'))} record, {lions.get('Points For', lions.get('PF', 'N/A'))} PF, {lions.get('Points Allowed', lions.get('PA', 'N/A'))} PA")
+        print(f"👑 {chiefs.get('Team', chiefs.get('Tm', 'Unknown'))} ({chiefs['Abbrev']}): {chiefs.get('Wins', chiefs.get('W', 'N/A'))}-{chiefs.get('Losses', chiefs.get('L', 'N/A'))} record, {chiefs.get('Points For', chiefs.get('PF', 'N/A'))} PF, {chiefs.get('Points Allowed', chiefs.get('PA', 'N/A'))} PA")
         
         print()
         print("🏆 Conference Breakdown:")
@@ -188,6 +188,30 @@ def main():
         nfc_teams = teams.get_teams_by_conference('NFC')
         print(f"AFC: {len(afc_teams)} teams | NFC: {len(nfc_teams)} teams")
         print(f"Available abbreviations: {', '.join(sorted(teams.list_abbreviations()))}")
+        
+        # Demonstrate CSV export functionality
+        print()
+        print("💾 CSV Export Examples:")
+        print("=" * 30)
+        
+        try:
+            # Export all teams
+            csv_file = teams.to_csv()
+            print(f"✅ All teams exported to: {csv_file}")
+            
+            # Export by conference
+            conf_files = teams.export_by_conference()
+            for conf, filename in conf_files.items():
+                print(f"✅ {conf} teams exported to: {filename}")
+                
+            # Show data structure
+            df = teams.to_dataframe()
+            print(f"📊 Data structure: {df.shape[0]} teams, {df.shape[1]} columns")
+            print(f"   Columns: {', '.join(df.columns)}")
+            
+        except Exception as export_error:
+            logger.warning(f"CSV export demonstration failed: {export_error}")
+            print(f"⚠️  CSV export demo failed: {export_error}")
 
     except Exception as e:
         logger.error(f"Failed to load NFL teams: {e}")

@@ -1,5 +1,6 @@
 from . import constants
 from ..utils.common import _curl_page, parse_table, _no_data_found
+from .models import NFLColumnMapping
 import pandas as pd
 
 
@@ -82,13 +83,21 @@ def _retrieve_all_teams(year, season_page=None):
         if not table:
             continue
             
-        # Get headers from the table
+        # Get headers from the table with proper descriptions using our model mapping
         thead = table.find('thead')
         if thead:
             header_row = thead.find('tr')
-            headers = [th.text.strip() for th in header_row.find_all(['th', 'td'])]
+            headers = []
+            for th in header_row.find_all(['th', 'td']):
+                # Use aria-label for proper column names, fall back to text
+                label = th.get('aria-label', th.text.strip())
+                # Use our model mapping to get the preferred descriptive name
+                preferred_name = NFLColumnMapping.WEBSITE_TO_MODEL.get(label, label)
+                final_name = NFLColumnMapping.PREFERRED_COLUMNS.get(preferred_name, label)
+                headers.append(final_name)
         else:
-            headers = ['Tm', 'W', 'L', 'W-L%', 'PF', 'PA', 'PD', 'MoV', 'SoS', 'SRS', 'OSRS', 'DSRS']
+            # Use preferred column names from our model
+            headers = NFLColumnMapping.get_preferred_column_names()
         
         # Get data rows
         tbody = table.find('tbody')
