@@ -1,5 +1,4 @@
 import re
-import requests
 from datetime import datetime
 from lxml.etree import ParserError, XMLSyntaxError
 from pyquery import PyQuery as pq
@@ -34,7 +33,7 @@ def _todays_date():
 
 def _url_exists(url):
     """
-    Determine if a URL is valid and exists.
+    Determine if a URL is valid and exists using pycurl.
 
     Not every URL that is provided is valid and exists, such as requesting
     stats for a season that hasn't yet begun. In this case, the URL needs to be
@@ -53,17 +52,26 @@ def _url_exists(url):
         False.
     """
     try:
-        response = requests.head(url)
-        if response.status_code == 301:
-            response = requests.get(url)
-            if response.status_code < 400:
-                return True
-            else:
-                return False
-        elif response.status_code < 400:
-            return True
-        else:
-            return False
+        buffer = BytesIO()
+        c = pycurl.Curl()
+        
+        # Configure for HEAD request (faster than full GET)
+        c.setopt(c.URL, url)
+        c.setopt(c.NOBODY, 1)  # HEAD request only
+        c.setopt(c.WRITEDATA, buffer)
+        c.setopt(pycurl.USERAGENT, "curl/7.88.1")
+        c.setopt(pycurl.FOLLOWLOCATION, 1)  # Follow redirects
+        c.setopt(pycurl.MAXREDIRS, 5)  # Max 5 redirects
+        c.setopt(pycurl.TIMEOUT, 10)  # 10 second timeout
+        
+        # Perform the request
+        c.perform()
+        status_code = c.getinfo(pycurl.HTTP_CODE)
+        c.close()
+        
+        # Consider 200-399 as valid
+        return 200 <= status_code < 400
+        
     except Exception:
         return False
 
