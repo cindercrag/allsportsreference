@@ -116,7 +116,7 @@ def _retrieve_team_schedule(team_abbrev, year):
     list
         Returns a list of dictionaries representing all games in the schedule.
     """
-    from bs4 import BeautifulSoup
+    from bs4 import BeautifulSoup, Comment
 
     # Build the URL using the schedule constant
     url = constants.SCHEDULE_URL % (team_abbrev.lower(), year)
@@ -129,31 +129,37 @@ def _retrieve_team_schedule(team_abbrev, year):
     
     games_list = []
     
-    # Look for tables with game log data
-    # The main table has ID like "team-year-regular-season-game-log"
-    table_id_patterns = [
-        f"{team_abbrev.lower()}-{year}-regular-season-game-log",
-        f"{team_abbrev.lower()}-{year}-playoffs-game-log",
-        "team-year-regular-season-game-log",
-        "team-year-playoffs-game-log"
-    ]
+    # First try to find tables in the main HTML
+    tables = soup.find_all('table')
     
-    # Try to find tables by various ID patterns and also look for tables with "game" in the ID
-    tables = []
-    for pattern in table_id_patterns:
-        table = soup.find('table', id=pattern)
-        if table:
-            tables.append(table)
-    
-    # Also look for any table with "game" in the ID as backup
+    # If no tables found, look in HTML comments (common on sports-reference sites)
     if not tables:
-        all_tables = soup.find_all('table')
-        for table in all_tables:
-            table_id = table.get('id', '')
-            if 'game' in table_id.lower() and 'log' in table_id.lower():
-                tables.append(table)
+        comments = soup.find_all(string=lambda text: isinstance(text, Comment))
+        
+        for comment in comments:
+            comment_str = str(comment)
+            if '<table' in comment_str and ('game' in comment_str.lower() or team_abbrev.lower() in comment_str.lower()):
+                # Parse the comment as HTML
+                comment_soup = BeautifulSoup(comment_str, 'lxml')
+                comment_tables = comment_soup.find_all('table')
+                tables.extend(comment_tables)
     
+    # Look for tables with game log data
+    valid_tables = []
     for table in tables:
+        table_id = table.get('id', '').lower()
+        # Look for tables that likely contain game log data
+        if any(keyword in table_id for keyword in ['game', 'log', team_abbrev.lower(), year]):
+            valid_tables.append(table)
+    
+    # If we still don't have tables, try all tables that have date columns
+    if not valid_tables:
+        for table in tables:
+            date_cells = table.find_all('td', {'data-stat': 'date'})
+            if date_cells:
+                valid_tables.append(table)
+    
+    for table in valid_tables:
         if not table:
             continue
             
@@ -167,21 +173,42 @@ def _retrieve_team_schedule(team_abbrev, year):
             if header_rows:
                 header_row = header_rows[-1]  # Use the last header row
                 for th in header_row.find_all(['th', 'td']):
-                    # Use aria-label for proper column names, fall back to text
-                    label = th.get('aria-label', th.text.strip())
-                    if label:
-                        headers.append(label)
+                    # Use data-stat attribute if available, then aria-label, then text
+                    data_stat = th.get('data-stat', '')
+                    aria_label = th.get('aria-label', '')
+                    text = th.text.strip()
+                    
+                    if data_stat:
+                        headers.append(data_stat)
+                    elif aria_label:
+                        headers.append(aria_label)
+                    elif text:
+                        headers.append(text)
+                    else:
+                        headers.append(f'Column_{len(headers)}')
         
-        # If no headers found, create generic ones based on typical game log structure
+        # If no headers found, try to infer from data-stat attributes in first data row
         if not headers:
-            # Common game log columns based on the webpage structure
-            headers = ['Week', 'Game', 'Date', 'Day', 'Location', 'Opponent', 'Result', 
-                      'Team_Score', 'Opp_Score', 'Pass_Cmp', 'Pass_Att', 'Pass_Cmp_Pct',
-                      'Pass_Yds', 'Pass_TD', 'Pass_Rate', 'Pass_Sk', 'Pass_Sk_Yds',
-                      'Rush_Att', 'Rush_Yds', 'Rush_TD', 'Rush_YPC', 'Tot_Plays',
-                      'Tot_Yds', 'Tot_YPP', 'TO_Fumble', 'TO_Int', 'Penalty_Count',
-                      'Penalty_Yds', 'Third_Down_Success', 'Third_Down_Att', 'Fourth_Down_Success',
-                      'Fourth_Down_Att', 'Time_of_Possession']
+            tbody = table.find('tbody')
+            if tbody:
+                first_row = tbody.find('tr')
+                if first_row:
+                    for cell in first_row.find_all(['td', 'th']):
+                        data_stat = cell.get('data-stat', '')
+                        if data_stat:
+                            headers.append(data_stat)
+                        else:
+                            headers.append(f'Column_{len(headers)}')
+        
+        # Fallback to generic headers if still nothing found
+        if not headers:
+            headers = ['week', 'game_num', 'game_date', 'day_of_week', 'location', 'opponent', 'result', 
+                      'pts_off', 'pts_def', 'pass_cmp', 'pass_att', 'pass_cmp_pct',
+                      'pass_yds', 'pass_td', 'pass_rate', 'pass_sacked', 'pass_sacked_yds',
+                      'rush_att', 'rush_yds', 'rush_td', 'rush_ypc', 'total_plays',
+                      'total_yds', 'total_ypp', 'turnovers_fumbles', 'turnovers_int', 'penalties_count',
+                      'penalties_yds', 'third_down_success', 'third_down_att', 'fourth_down_success',
+                      'fourth_down_att', 'time_of_possession']
         
         # Get data rows
         tbody = table.find('tbody')
@@ -194,16 +221,34 @@ def _retrieve_team_schedule(team_abbrev, year):
                     continue
                 
                 cells = []
+                boxscore_id = None
+                
                 for cell in row.find_all(['td', 'th']):
-                    # Get the text content, handling links for opponent names
-                    if cell.find('a'):
-                        # If there's a link, use the link text (opponent abbreviation)
-                        cells.append(cell.find('a').text.strip())
+                    data_stat = cell.get('data-stat', '')
+                    
+                    # Special handling for date column to extract boxscore ID
+                    if data_stat == 'date' or data_stat == 'game_date':
+                        # Look for a link in the Date cell
+                        date_link = cell.find('a')
+                        if date_link and date_link.get('href'):
+                            href = date_link.get('href')
+                            # Extract boxscore ID from href like "/boxscores/202409050kan.htm"
+                            if '/boxscores/' in href:
+                                # Extract the boxscore ID (e.g., "202409050kan" from "/boxscores/202409050kan.htm")
+                                boxscore_id = href.split('/boxscores/')[-1].replace('.htm', '')
+                            cells.append(date_link.text.strip())
+                        else:
+                            cells.append(cell.text.strip())
                     else:
-                        cells.append(cell.text.strip())
+                        # Get the text content, handling links for opponent names
+                        if cell.find('a'):
+                            # If there's a link, use the link text (opponent abbreviation)
+                            cells.append(cell.find('a').text.strip())
+                        else:
+                            cells.append(cell.text.strip())
                 
                 # Only process rows that have data (skip empty or header rows)
-                if len(cells) >= 6 and cells[0] and cells[0] not in ['Week', 'G#', '']:
+                if len(cells) >= 6 and cells[0] and cells[0] not in ['Week', 'G#', 'Wk', 'week', '']:
                     # Create dictionary for this game, using available headers
                     game_data = {}
                     for i, value in enumerate(cells):
@@ -213,8 +258,45 @@ def _retrieve_team_schedule(team_abbrev, year):
                             # Handle extra columns that might not have headers
                             game_data[f'Column_{i}'] = value
                     
-                    # Map common column names to our expected names
-                    column_mapping = {
+                    # Map data-stat attribute names to our expected names
+                    data_stat_mapping = {
+                        'week_num': 'Week',
+                        'team_game_num_season': 'Game', 
+                        'date': 'Date',
+                        'game_day_of_week': 'Day',
+                        'game_location': 'Location',
+                        'opp_name_abbr': 'Opponent',
+                        'team_game_result': 'Result',
+                        'points': 'Team_Score',
+                        'points_opp': 'Opp_Score',
+                        'pass_cmp': 'Pass_Cmp',
+                        'pass_att': 'Pass_Att',
+                        'pass_cmp_pct': 'Pass_Cmp_Pct',
+                        'pass_yds': 'Pass_Yds',
+                        'pass_td': 'Pass_TD',
+                        'pass_rating': 'Pass_Rate',
+                        'pass_sacked': 'Pass_Sk',
+                        'pass_sacked_yds': 'Pass_Sk_Yds',
+                        'rush_att': 'Rush_Att',
+                        'rush_yds': 'Rush_Yds',
+                        'rush_td': 'Rush_TD',
+                        'rush_yds_per_att': 'Rush_YPC',
+                        'plays_offense': 'Tot_Plays',
+                        'tot_yds': 'Tot_Yds',
+                        'yds_per_play_offense': 'Tot_YPP',
+                        'fumbles_lost': 'TO_Fumble',
+                        'pass_int': 'TO_Int',
+                        'penalties': 'Penalty_Count',
+                        'penalty_yds': 'Penalty_Yds',
+                        'third_down_success': 'Third_Down_Success',
+                        'third_down_att': 'Third_Down_Att',
+                        'fourth_down_success': 'Fourth_Down_Success',
+                        'fourth_down_att': 'Fourth_Down_Att',
+                        'time_of_poss': 'Time_of_Possession'
+                    }
+                    
+                    # Legacy column mapping for backward compatibility
+                    legacy_mapping = {
                         'Opp': 'Opponent',
                         'Rslt': 'Result', 
                         'Pts': 'Team_Score',
@@ -243,10 +325,11 @@ def _retrieve_team_schedule(team_abbrev, year):
                         ' ': 'Location'  # This column indicates @ for away games
                     }
                     
-                    # Apply column mapping
+                    # Apply both mappings
                     mapped_game_data = {}
                     for key, value in game_data.items():
-                        mapped_key = column_mapping.get(key, key)
+                        # Try data-stat mapping first, then legacy mapping, then keep original
+                        mapped_key = data_stat_mapping.get(key, legacy_mapping.get(key, key))
                         mapped_game_data[mapped_key] = value
                     
                     # Clean up some common field names and values
@@ -275,6 +358,24 @@ def _retrieve_team_schedule(team_abbrev, year):
                     # Add team abbreviation for reference
                     mapped_game_data['Team'] = team_abbrev.upper()
                     mapped_game_data['Season'] = year
+                    
+                    # Add boxscore ID if found
+                    if boxscore_id:
+                        mapped_game_data['Boxscore_ID'] = boxscore_id
+                        # Also construct the full boxscore URL for convenience
+                        mapped_game_data['Boxscore_URL'] = f"https://www.pro-football-reference.com/boxscores/{boxscore_id}.htm"
+                        
+                        # Parse additional boxscore metadata using our utility
+                        try:
+                            from .boxscore_utils import parse_boxscore_id
+                            boxscore_info = parse_boxscore_id(boxscore_id)
+                            if boxscore_info:
+                                mapped_game_data['Boxscore_Date'] = boxscore_info.date
+                                mapped_game_data['Boxscore_Game_Number'] = boxscore_info.game_number
+                                mapped_game_data['Boxscore_Home_Team'] = boxscore_info.home_team
+                        except ImportError:
+                            # If boxscore_utils is not available, skip the additional metadata
+                            pass
                     
                     games_list.append(mapped_game_data)
 

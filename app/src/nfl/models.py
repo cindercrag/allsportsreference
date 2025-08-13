@@ -19,7 +19,36 @@ class NFLConference(str, Enum):
 
 class NFLTeamData(BaseModel):
     """
-    NFL Team data model based on pro-football-reference.com team standings table.
+    NFL    # Boxscore identification and linking
+    boxscore_id: Optional[str] = Field(
+        None,
+        description="Unique boxscore identifier (e.g., '202309070kan')",
+        alias="Boxscore_ID"
+    )
+    
+    boxscore_url: Optional[str] = Field(
+        None,
+        description="Full URL to boxscore page",
+        alias="Boxscore_URL"
+    )
+    
+    boxscore_date: Optional[str] = Field(
+        None,
+        description="Game date extracted from boxscore ID (YYYY-MM-DD format)",
+        alias="Boxscore_Date"
+    )
+    
+    boxscore_game_number: Optional[int] = Field(
+        None,
+        description="Game number from boxscore ID (0=first/only game, 1+=doubleheader)",
+        alias="Boxscore_Game_Number"
+    )
+    
+    boxscore_home_team: Optional[str] = Field(
+        None,
+        description="Home team abbreviation from boxscore ID (lowercase)",
+        alias="Boxscore_Home_Team"
+    )odel based on pro-football-reference.com team standings table.
     
     Field names correspond to the mouse-over descriptions (data-tip attributes)
     from the website for accurate mapping and better readability.
@@ -579,6 +608,19 @@ class NFLGameLogData(BaseModel):
         None,
         description="Season year",
         alias="Season"
+    )
+    
+    # Boxscore identification and linking
+    boxscore_id: Optional[str] = Field(
+        None,
+        description="Unique boxscore identifier (e.g., '202409050kan')",
+        alias="Boxscore_ID"
+    )
+    
+    boxscore_url: Optional[str] = Field(
+        None,
+        description="Full URL to boxscore page",
+        alias="Boxscore_URL"
     )
     
     @validator('team_score', 'opp_score', pre=True)
