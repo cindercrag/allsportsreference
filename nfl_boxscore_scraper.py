@@ -38,7 +38,7 @@ load_dotenv(env_path, override=True)
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'app'))
 
 from src.nfl.database import PostgreSQLManager
-from src.utils.common import _curl_page
+from src.utils.common import _curl_page, export_dataframe_to_csv
 
 # Configure logging
 logging.basicConfig(
@@ -178,59 +178,79 @@ class NFLBoxscoreScraper:
             return None
     
     def extract_team_stats(self, soup: BeautifulSoup, boxscore_id: str) -> List[BoxscoreTeamStats]:
-        """Extract team-level statistics"""
+        """Extract team-level statistics from HTML comments"""
         team_stats = []
         
         try:
-            # Find the team stats table
-            team_stats_table = soup.find('table', {'id': 'team_stats'})
-            if not team_stats_table:
-                logger.warning(f"⚠️  No team stats table found for {boxscore_id}")
-                return team_stats
+            # Team stats are in HTML comments
+            comments = soup.find_all(string=lambda text: isinstance(text, Comment))
             
-            rows = team_stats_table.find('tbody').find_all('tr')
-            
-            # Extract team abbreviations from headers
-            team_headers = team_stats_table.find('thead').find_all('th')
-            teams = [th.get_text().strip() for th in team_headers if th.get_text().strip() and len(th.get_text().strip()) == 3]
-            
-            if len(teams) != 2:
-                logger.warning(f"⚠️  Could not identify teams for {boxscore_id}")
-                return team_stats
-            
-            # Map stat names to values for each team
-            stats_data = {teams[0]: {}, teams[1]: {}}
-            
-            for row in rows:
-                cells = row.find_all(['td', 'th'])
-                if len(cells) >= 3:
-                    stat_name = cells[0].get_text().strip()
-                    team1_val = cells[1].get_text().strip()
-                    team2_val = cells[2].get_text().strip()
+            for comment in comments:
+                if 'team_stats' in comment:
+                    comment_soup = BeautifulSoup(comment, 'html.parser')
+                    team_stats_table = comment_soup.find('table', {'id': 'team_stats'})
                     
-                    stats_data[teams[0]][stat_name] = team1_val
-                    stats_data[teams[1]][stat_name] = team2_val
-            
-            # Create BoxscoreTeamStats objects
-            for team in teams:
-                data = stats_data[team]
-                team_stat = BoxscoreTeamStats(
-                    boxscore_id=boxscore_id,
-                    team=team,
-                    first_downs=self._safe_int(data.get('First Downs')),
-                    total_yards=self._safe_int(data.get('Total Yards')),
-                    passing_yards=self._safe_int(data.get('Passing')),
-                    rushing_yards=self._safe_int(data.get('Rushing')),
-                    turnovers=self._safe_int(data.get('Turnovers')),
-                    penalties=self._safe_int(data.get('Penalties', '').split('-')[0] if '-' in data.get('Penalties', '') else data.get('Penalties')),
-                    penalty_yards=self._safe_int(data.get('Penalties', '').split('-')[1] if '-' in data.get('Penalties', '') else None),
-                    time_of_possession=data.get('Time of Possession'),
-                    third_down_conversions=data.get('Third Down Conv.'),
-                    fourth_down_conversions=data.get('Fourth Down Conv.'),
-                )
-                team_stats.append(team_stat)
-            
-            logger.info(f"📊 Extracted team stats for {len(teams)} teams")
+                    if team_stats_table:
+                        # Get team names from header row
+                        header_row = team_stats_table.find('tr')
+                        if header_row:
+                            header_cells = header_row.find_all(['th', 'td'])
+                            if len(header_cells) >= 3:
+                                team1 = header_cells[1].get_text(strip=True)
+                                team2 = header_cells[2].get_text(strip=True)
+                        
+                        # Parse each stat row
+                        stats_data = {team1: {}, team2: {}}
+                        rows = team_stats_table.find_all('tr')[1:]  # Skip header
+                        
+                        for row in rows:
+                            cells = row.find_all(['td', 'th'])
+                            if len(cells) >= 3:
+                                stat_name = cells[0].get_text(strip=True)
+                                team1_value = cells[1].get_text(strip=True)
+                                team2_value = cells[2].get_text(strip=True)
+                                
+                                stats_data[team1][stat_name] = team1_value
+                                stats_data[team2][stat_name] = team2_value
+                        
+                        # Create BoxscoreTeamStats objects for both teams
+                        for team in [team1, team2]:
+                            data = stats_data[team]
+                            
+                            # Parse rushing yards from "Rush-Yds-TDs" format
+                            rushing_yards = None
+                            if "Rush-Yds-TDs" in data:
+                                rush_parts = data["Rush-Yds-TDs"].split('-')
+                                if len(rush_parts) >= 2:
+                                    rushing_yards = self._safe_int(rush_parts[1])
+                            
+                            # Parse penalties from "Penalties-Yards" format  
+                            penalties = None
+                            penalty_yards = None
+                            if "Penalties-Yards" in data:
+                                pen_parts = data["Penalties-Yards"].split('-')
+                                if len(pen_parts) >= 2:
+                                    penalties = self._safe_int(pen_parts[0])
+                                    penalty_yards = self._safe_int(pen_parts[1])
+                            
+                            team_stat = BoxscoreTeamStats(
+                                boxscore_id=boxscore_id,
+                                team=team,
+                                first_downs=self._safe_int(data.get('First Downs')),
+                                total_yards=self._safe_int(data.get('Total Yards')),
+                                passing_yards=self._safe_int(data.get('Net Pass Yards')),
+                                rushing_yards=rushing_yards,
+                                turnovers=self._safe_int(data.get('Turnovers')),
+                                penalties=penalties,
+                                penalty_yards=penalty_yards,
+                                time_of_possession=data.get('Time of Possession'),
+                                third_down_conversions=data.get('Third Down Conv.'),
+                                fourth_down_conversions=data.get('Fourth Down Conv.'),
+                            )
+                            team_stats.append(team_stat)
+                        break
+                        
+            logger.info(f"📊 Extracted team stats for {len(team_stats)} teams")
             
         except Exception as e:
             logger.error(f"❌ Error extracting team stats for {boxscore_id}: {e}")
@@ -242,15 +262,97 @@ class NFLBoxscoreScraper:
         player_stats = []
         
         try:
-            # Find passing, rushing, receiving table
-            passing_table = soup.find('table', {'id': 'player_offense'})
-            if passing_table:
-                player_stats.extend(self._parse_offensive_stats(passing_table, boxscore_id))
+            # Find the player offense table
+            player_table = soup.find('table', {'id': 'player_offense'})
+            if not player_table:
+                logger.warning(f"⚠️  No player_offense table found for {boxscore_id}")
+                return player_stats
             
-            # Find defensive stats table
-            defense_table = soup.find('table', {'id': 'player_defense'})
-            if defense_table:
-                player_stats.extend(self._parse_defensive_stats(defense_table, boxscore_id))
+            # Get headers to understand column positions
+            headers = player_table.find('thead')
+            if not headers:
+                return player_stats
+                
+            header_cells = headers.find_all('th')
+            header_text = [th.get_text(strip=True) for th in header_cells]
+            
+            # Find column indices for stats we want
+            col_indices = {}
+            for i, header in enumerate(header_text):
+                if header == 'Player':
+                    col_indices['player'] = i
+                elif header == 'Tm':
+                    col_indices['team'] = i
+                elif header == 'Cmp':
+                    col_indices['pass_cmp'] = i
+                elif header == 'Att' and 'pass_att' not in col_indices:
+                    col_indices['pass_att'] = i
+                elif header == 'Yds' and 'pass_yds' not in col_indices:
+                    col_indices['pass_yds'] = i
+                elif header == 'TD' and 'pass_td' not in col_indices:
+                    col_indices['pass_td'] = i
+                elif header == 'Int':
+                    col_indices['pass_int'] = i
+            
+            # Find rushing and receiving column indices (they appear after passing)
+            passing_end = max([v for k, v in col_indices.items() if 'pass' in k], default=0)
+            
+            for i in range(passing_end + 1, len(header_text)):
+                header = header_text[i]
+                if header == 'Att' and 'rush_att' not in col_indices:
+                    col_indices['rush_att'] = i
+                elif header == 'Yds' and 'rush_yds' not in col_indices:
+                    col_indices['rush_yds'] = i
+                elif header == 'TD' and 'rush_td' not in col_indices:
+                    col_indices['rush_td'] = i
+                elif header == 'Rec':
+                    col_indices['rec_rec'] = i
+                elif header == 'Yds' and 'rec_yds' not in col_indices and 'rec_rec' in col_indices:
+                    col_indices['rec_yds'] = i
+                elif header == 'TD' and 'rec_td' not in col_indices and 'rec_rec' in col_indices:
+                    col_indices['rec_td'] = i
+                elif header == 'Tgt':
+                    col_indices['rec_tgt'] = i
+            
+            # Parse player rows
+            tbody = player_table.find('tbody')
+            if tbody:
+                rows = tbody.find_all('tr')
+                
+                for row in rows:
+                    cells = row.find_all(['td', 'th'])
+                    if len(cells) < max(col_indices.values(), default=0) + 1:
+                        continue
+                    
+                    # Extract player data
+                    player_name = cells[col_indices.get('player', 0)].get_text(strip=True)
+                    team = cells[col_indices.get('team', 1)].get_text(strip=True)
+                    
+                    if not player_name or not team:
+                        continue
+                    
+                    # Create player stat object
+                    player_stat = BoxscorePlayerStats(
+                        boxscore_id=boxscore_id,
+                        player_name=player_name,
+                        team=team,
+                        pass_cmp=self._safe_int(cells[col_indices.get('pass_cmp', -1)].get_text(strip=True)) if col_indices.get('pass_cmp', -1) >= 0 else None,
+                        pass_att=self._safe_int(cells[col_indices.get('pass_att', -1)].get_text(strip=True)) if col_indices.get('pass_att', -1) >= 0 else None,
+                        pass_yds=self._safe_int(cells[col_indices.get('pass_yds', -1)].get_text(strip=True)) if col_indices.get('pass_yds', -1) >= 0 else None,
+                        pass_td=self._safe_int(cells[col_indices.get('pass_td', -1)].get_text(strip=True)) if col_indices.get('pass_td', -1) >= 0 else None,
+                        pass_int=self._safe_int(cells[col_indices.get('pass_int', -1)].get_text(strip=True)) if col_indices.get('pass_int', -1) >= 0 else None,
+                        rush_att=self._safe_int(cells[col_indices.get('rush_att', -1)].get_text(strip=True)) if col_indices.get('rush_att', -1) >= 0 else None,
+                        rush_yds=self._safe_int(cells[col_indices.get('rush_yds', -1)].get_text(strip=True)) if col_indices.get('rush_yds', -1) >= 0 else None,
+                        rush_td=self._safe_int(cells[col_indices.get('rush_td', -1)].get_text(strip=True)) if col_indices.get('rush_td', -1) >= 0 else None,
+                        rec_tgt=self._safe_int(cells[col_indices.get('rec_tgt', -1)].get_text(strip=True)) if col_indices.get('rec_tgt', -1) >= 0 else None,
+                        rec_rec=self._safe_int(cells[col_indices.get('rec_rec', -1)].get_text(strip=True)) if col_indices.get('rec_rec', -1) >= 0 else None,
+                        rec_yds=self._safe_int(cells[col_indices.get('rec_yds', -1)].get_text(strip=True)) if col_indices.get('rec_yds', -1) >= 0 else None,
+                        rec_td=self._safe_int(cells[col_indices.get('rec_td', -1)].get_text(strip=True)) if col_indices.get('rec_td', -1) >= 0 else None,
+                        def_tackles=None,  # Would need defensive table
+                        def_assists=None,
+                        def_sacks=None
+                    )
+                    player_stats.append(player_stat)
             
             logger.info(f"👥 Extracted stats for {len(player_stats)} players")
             
@@ -260,41 +362,41 @@ class NFLBoxscoreScraper:
         return player_stats
     
     def extract_scoring_data(self, soup: BeautifulSoup, boxscore_id: str) -> List[BoxscoreScoring]:
-        """Extract scoring events"""
+        """Extract scoring events timeline"""
         scoring_events = []
         
         try:
-            # Find scoring table
+            # Find the scoring table
             scoring_table = soup.find('table', {'id': 'scoring'})
             if not scoring_table:
                 logger.warning(f"⚠️  No scoring table found for {boxscore_id}")
                 return scoring_events
             
-            rows = scoring_table.find('tbody').find_all('tr')
-            
-            for row in rows:
-                cells = row.find_all(['td', 'th'])
-                if len(cells) >= 4:
-                    time_remaining = cells[0].get_text().strip()
-                    team = cells[1].get_text().strip()
-                    description = cells[2].get_text().strip()
-                    score = cells[3].get_text().strip()
-                    
-                    # Parse scores (format: "14-7")
-                    if '-' in score:
-                        scores = score.split('-')
-                        if len(scores) == 2:
-                            # Determine quarter from context
-                            quarter = 1  # Default, could be enhanced
-                            
+            # Parse scoring events
+            tbody = scoring_table.find('tbody')
+            if tbody:
+                rows = tbody.find_all('tr')
+                
+                for row in rows:
+                    cells = row.find_all(['td', 'th'])
+                    if len(cells) >= 6:
+                        quarter = cells[0].get_text(strip=True)
+                        time_remaining = cells[1].get_text(strip=True)
+                        team = cells[2].get_text(strip=True)
+                        description = cells[3].get_text(strip=True)
+                        score_home = self._safe_int(cells[4].get_text(strip=True))
+                        score_away = self._safe_int(cells[5].get_text(strip=True))
+                        
+                        # Only add if we have a quarter (skip empty rows)
+                        if quarter:
                             scoring_event = BoxscoreScoring(
                                 boxscore_id=boxscore_id,
-                                quarter=quarter,
+                                quarter=self._safe_int(quarter),
                                 time_remaining=time_remaining,
                                 team=team,
                                 description=description,
-                                score_home=self._safe_int(scores[1]),
-                                score_away=self._safe_int(scores[0])
+                                score_home=score_home,
+                                score_away=score_away
                             )
                             scoring_events.append(scoring_event)
             
@@ -640,22 +742,35 @@ class NFLBoxscoreScraper:
             logger.error(f"❌ Error saving boxscore data for {boxscore_id}: {e}")
             raise
     
-    def get_available_boxscore_ids(self, limit: int = 5) -> List[str]:
+    def get_available_boxscore_ids(self, limit: int = 5, season: int = None) -> List[str]:
         """Get boxscore IDs from database that need detailed scraping."""
         try:
             with PostgreSQLManager() as db:
                 with db._connection.cursor() as cursor:
                     # Get existing game log entries that have boxscore_ids but no detailed stats yet
-                    cursor.execute("""
+                    season_filter = ""
+                    params = [limit]
+                    
+                    if season:
+                        season_filter = "AND gl.season = %s"
+                        params = [season, limit]
+                    
+                    query = f"""
                         SELECT DISTINCT gl.boxscore_id 
                         FROM nfl.game_logs gl
                         LEFT JOIN nfl.boxscore_player_stats bps ON gl.boxscore_id = bps.boxscore_id
                         WHERE gl.boxscore_id IS NOT NULL 
                         AND gl.boxscore_id != ''
                         AND bps.boxscore_id IS NULL
+                        {season_filter}
                         ORDER BY gl.boxscore_id DESC
                         LIMIT %s
-                    """, (limit,))
+                    """
+                    
+                    if season:
+                        cursor.execute(query, params)
+                    else:
+                        cursor.execute(query, (limit,))
                     
                     results = cursor.fetchall()
                     boxscore_ids = [row[0] for row in results]
@@ -700,8 +815,20 @@ class NFLBoxscoreScraper:
 
 def main():
     """Main function for testing the boxscore scraper"""
+    import sys
+    
+    # Check for season argument
+    season = None
+    if len(sys.argv) > 1:
+        try:
+            season = int(sys.argv[1])
+        except ValueError:
+            logger.warning(f"Invalid season argument: {sys.argv[1]}. Using default.")
+    
     logger.info("🏈 NFL Advanced Boxscore Detail Scraper")
     logger.info("=" * 50)
+    if season:
+        logger.info(f"📅 Processing season: {season}")
     
     scraper = NFLBoxscoreScraper()
     
@@ -709,8 +836,8 @@ def main():
         # Create database tables
         scraper.create_database_tables()
         
-        # Get available boxscore IDs
-        boxscore_ids = scraper.get_available_boxscore_ids(limit=3)  # Test with 3 games
+        # Get available boxscore IDs for the specified season
+        boxscore_ids = scraper.get_available_boxscore_ids(limit=20, season=season)  # Process up to 20 games
         
         if not boxscore_ids:
             logger.warning("⚠️  No boxscore IDs found that need scraping")
@@ -719,15 +846,21 @@ def main():
         logger.info(f"📋 Found {len(boxscore_ids)} boxscores to scrape")
         
         # Scrape each boxscore
-        successful = 0
-        for boxscore_id in boxscore_ids:
+        successful_scrapes = 0
+        for i, boxscore_id in enumerate(boxscore_ids):
+            logger.info(f"🎯 Progress: {i+1}/{len(boxscore_ids)}")
             if scraper.scrape_boxscore_details(boxscore_id):
-                successful += 1
+                successful_scrapes += 1
             
-            # Be respectful with delays
-            time.sleep(random.uniform(2, 5))
+            # Be respectful with delays between requests
+            if i < len(boxscore_ids) - 1:  # Don't delay after the last request
+                time.sleep(random.uniform(2, 4))
         
-        logger.info(f"🎯 Scraping completed: {successful}/{len(boxscore_ids)} successful")
+        logger.info(f"🎯 Scraping completed: {successful_scrapes}/{len(boxscore_ids)} successful")
+        
+        # Export to CSV files
+        logger.info("\n📤 Exporting data to CSV files...")
+        export_csv_data()
         
         # Show some sample results
         logger.info("\n📊 Sample advanced data:")
@@ -743,10 +876,98 @@ def main():
                 results = cursor.fetchall()
                 for boxscore_id, count in results:
                     logger.info(f"   📋 {boxscore_id}: {count} player records")
+                    
+                # Show some scoring data
+                cursor.execute("""
+                    SELECT COUNT(*) as total_scoring_events,
+                           COUNT(DISTINCT boxscore_id) as games_with_scoring
+                    FROM nfl.boxscore_scoring
+                """)
+                scoring_result = cursor.fetchone()
+                logger.info(f"   🏆 Total scoring events: {scoring_result[0]} across {scoring_result[1]} games")
         
     except Exception as e:
         logger.error(f"❌ Scraping failed: {e}")
         raise
+
+def export_csv_data():
+    """Export all advanced boxscore data to CSV files"""
+    import pandas as pd
+    from datetime import datetime
+    
+    try:
+        with PostgreSQLManager() as db:
+            with db._connection.cursor() as cursor:
+                
+                # Export team stats
+                cursor.execute("SELECT * FROM nfl.boxscore_team_stats ORDER BY boxscore_id, team")
+                team_data = cursor.fetchall()
+                
+                if team_data:
+                    # Get column names
+                    cursor.execute("""
+                        SELECT column_name 
+                        FROM information_schema.columns 
+                        WHERE table_schema = 'nfl' AND table_name = 'boxscore_team_stats'
+                        ORDER BY ordinal_position
+                    """)
+                    team_columns = [row[0] for row in cursor.fetchall()]
+                    
+                    team_df = pd.DataFrame(team_data, columns=team_columns)
+                    export_dataframe_to_csv(
+                        team_df, 
+                        sport="NFL",
+                        data_type="boxscore_team_stats",
+                        season=datetime.now().year
+                    )
+                    logger.info(f"✅ Exported {len(team_df)} team stat records to CSV")
+                
+                # Export player stats  
+                cursor.execute("SELECT * FROM nfl.boxscore_player_stats ORDER BY boxscore_id, team, player_name")
+                player_data = cursor.fetchall()
+                
+                if player_data:
+                    cursor.execute("""
+                        SELECT column_name 
+                        FROM information_schema.columns 
+                        WHERE table_schema = 'nfl' AND table_name = 'boxscore_player_stats'
+                        ORDER BY ordinal_position
+                    """)
+                    player_columns = [row[0] for row in cursor.fetchall()]
+                    
+                    player_df = pd.DataFrame(player_data, columns=player_columns)
+                    export_dataframe_to_csv(
+                        player_df,
+                        sport="NFL", 
+                        data_type="boxscore_player_stats",
+                        season=datetime.now().year
+                    )
+                    logger.info(f"✅ Exported {len(player_df)} player stat records to CSV")
+                
+                # Export scoring events
+                cursor.execute("SELECT * FROM nfl.boxscore_scoring ORDER BY boxscore_id, quarter, time_remaining")
+                scoring_data = cursor.fetchall()
+                
+                if scoring_data:
+                    cursor.execute("""
+                        SELECT column_name 
+                        FROM information_schema.columns 
+                        WHERE table_schema = 'nfl' AND table_name = 'boxscore_scoring'
+                        ORDER BY ordinal_position
+                    """)
+                    scoring_columns = [row[0] for row in cursor.fetchall()]
+                    
+                    scoring_df = pd.DataFrame(scoring_data, columns=scoring_columns)
+                    export_dataframe_to_csv(
+                        scoring_df,
+                        sport="NFL",
+                        data_type="boxscore_scoring", 
+                        season=datetime.now().year
+                    )
+                    logger.info(f"✅ Exported {len(scoring_df)} scoring event records to CSV")
+                    
+    except Exception as e:
+        logger.error(f"❌ Error exporting CSV data: {e}")
 
 if __name__ == "__main__":
     main()
